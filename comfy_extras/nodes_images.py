@@ -583,6 +583,80 @@ class GetImageSize:
 
         return width, height, batch_size
 
+class ImageRotate:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "image": (IO.IMAGE,),
+                              "rotation": (["none", "90 degrees", "180 degrees", "270 degrees"],),
+                              }}
+    RETURN_TYPES = (IO.IMAGE,)
+    FUNCTION = "rotate"
+
+    CATEGORY = "image/transform"
+
+    def rotate(self, image, rotation):
+        rotate_by = 0
+        if rotation.startswith("90"):
+            rotate_by = 1
+        elif rotation.startswith("180"):
+            rotate_by = 2
+        elif rotation.startswith("270"):
+            rotate_by = 3
+
+        image = torch.rot90(image, k=rotate_by, dims=[2, 1])
+        return (image,)
+
+class ImageFlip:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "image": (IO.IMAGE,),
+                              "flip_method": (["x-axis: vertically", "y-axis: horizontally"],),
+                              }}
+    RETURN_TYPES = (IO.IMAGE,)
+    FUNCTION = "flip"
+
+    CATEGORY = "image/transform"
+
+    def flip(self, image, flip_method):
+        if flip_method.startswith("x"):
+            image = torch.flip(image, dims=[1])
+        elif flip_method.startswith("y"):
+            image = torch.flip(image, dims=[2])
+
+        return (image,)
+
+class ImageScaleToMaxDimension:
+    upscale_methods = ["area", "lanczos", "bilinear", "nearest-exact", "bilinear", "bicubic"]
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"image": ("IMAGE",),
+                             "upscale_method": (s.upscale_methods,),
+                             "largest_size": ("INT", {"default": 512, "min": 0, "max": MAX_RESOLUTION, "step": 1})}}
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "upscale"
+
+    CATEGORY = "image/upscaling"
+
+    def upscale(self, image, upscale_method, largest_size):
+        height = image.shape[1]
+        width = image.shape[2]
+
+        if height > width:
+            width = round((width / height) * largest_size)
+            height = largest_size
+        elif width > height:
+            height = round((height / width) * largest_size)
+            width = largest_size
+        else:
+            height = largest_size
+            width = largest_size
+
+        samples = image.movedim(-1, 1)
+        s = comfy.utils.common_upscale(samples, width, height, upscale_method, "disabled")
+        s = s.movedim(1, -1)
+        return (s,)
+
 NODE_CLASS_MAPPINGS = {
     "ImageCrop": ImageCrop,
     "RepeatImageBatch": RepeatImageBatch,
@@ -594,4 +668,7 @@ NODE_CLASS_MAPPINGS = {
     "ImageStitch": ImageStitch,
     "ResizeAndPadImage": ResizeAndPadImage,
     "GetImageSize": GetImageSize,
+    "ImageRotate": ImageRotate,
+    "ImageFlip": ImageFlip,
+    "ImageScaleToMaxDimension": ImageScaleToMaxDimension,
 }
