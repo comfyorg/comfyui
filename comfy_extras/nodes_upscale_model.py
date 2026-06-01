@@ -74,8 +74,22 @@ class ImageUpscaleWithModel(io.ComfyNode):
         memory_required += image.nelement() * image.element_size()
         model_management.free_memory(memory_required, device)
 
+        # Prefer bf16 (same exponent range as fp32, so no overflow — spandrel allows it
+        # for HAT/PLKSR where it disallows fp16), fall back to fp16, else fp32. Gated on
+        # spandrel's per-arch flags so unsupported archs stay fp32. tiled_scale accumulates
+        # into fp32 buffers, so the returned tensor is fp32 regardless of this cast.
+        cast_dtype = None
+        if upscale_model.supports_bfloat16:
+            cast_dtype = torch.bfloat16
+        elif upscale_model.supports_half:
+            cast_dtype = torch.float16
+
         upscale_model.to(device)
+        if cast_dtype is not None:
+            upscale_model.to(cast_dtype)
         in_img = image.movedim(-1,-3).to(device)
+        if cast_dtype is not None:
+            in_img = in_img.to(cast_dtype)
 
         oom = True
         while oom:
